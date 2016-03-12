@@ -2,11 +2,13 @@ __author__ = 'michaeltong'
 
 import os.path
 import pandas
+import csv
+import string
 
 GNRL_CSV_PATH_2013 = './general_2013.csv' 
 # just 2013 general data for now
 
-categories = [3, 10, 11, 12, 16, 17, 30, 31, 32, 37, 38, 46] 
+categories = [3, 10, 11, 12, 28] 
 #only take some of the categories: optional
 #use pandas.read_csv(usecols = categories) keyword
 
@@ -26,7 +28,30 @@ class GeneralReader():
     	if not os.path.exists(GNRL_CSV_PATH_2013):
     		raise FileNotFoundError('The .csv file was not found in %s' % GNRL_CSV_PATH_2013)
     	else:
-        	self.cms_lookup = pandas.read_csv(CSV_PATH, quotechar='"', quoting=csv.QUOTE_ALL, usecols=categories)
+        	self.cms_lookup = pandas.read_csv(GNRL_CSV_PATH_2013, quotechar='"', quoting=csv.QUOTE_ALL, usecols=categories)
+
+    def get_geo_filters(self, geo, translate):
+    	search = ''
+    	if 'city' in geo:
+    		geo['city'] = string.upper(geo['city'])
+
+
+    	if 'zipcode' in geo:
+    		geo['zipcode'] = geo['zipcode'][0:5]   #set 5 number zipcode
+
+    	for param in geo.keys():
+    		if geo[param] != '*':
+    			search += "%s == '%s' and " %(translate[param], geo[param])
+    	return search
+
+    def get_params_filters(self, params, translate):
+    	search = ''
+    	if 'minamt' in params and params['minamt'] != '*':
+    		search += "%s >= %.2f and " %(translate['amt'], float(params['minamt']))
+
+    	if 'maxamt' in params and params['maxamt'] != '*':
+    		search += "%s <= %.2f and " %(translate['amt'], float(params['maxamt']))
+    	return search
 
     def read(self, geo, params):
     	'''
@@ -34,32 +59,24 @@ class GeneralReader():
     	:param geo: geographic filters, possibilities are city, state, zipcode. Use * for any.
     	e.g. geo = {'city': 'Cleveland', 'state': 'OH', 'zipcode': '*'}
     	:type geo: dict
-    	:param params: other filters. Not supported yet
+    	:param params: other filters. minamt, maxamt. Use * for any.
     	:type params: dict
     	'''
 
         search = ''
+        translate = {'city': 'Recipient_City', 'state': 'Recipient_State', 'zipcode': 'Recipient_Zip_Code', \
+        'amt': 'Total_Amount_of_Payment_USDollars'}
 
-    	if 'city' in geo:
-    		geo['city'] = string.upper(geo['city'])
-    	else:
-    		geo['city'] = '*'
+        #geo params
+        search += self.get_geo_filters(geo, translate)
+    	
+    	#other params
 
-    	if 'state' not in geo:
-    		geo['state'] = '*'
+    	search += self.get_params_filters(params, translate)
 
-
-    	if 'zipcode' in geo and geo['zipcode'] != '*':
-    		geo['zipcode'] = geo['zipcode'][0:5]   #set 5 letter zipcode
-    	else:
-    		geo['zipcode'] = '*'
-
-    	for param in geo.keys():
-    		if geo[param] != '*':
-    			search += "%s == '%s' " %(param, geo[param])
-    			search += 'and '
+        print search[:-4]
 
     	if len(search) > 0:
-    		return df.query(search[-4])
+    		return self.cms_lookup.query(search[:-4])  #[:-4] gets rid of last "and"
     	else:
-    		return df
+    		return self.cms_lookup
